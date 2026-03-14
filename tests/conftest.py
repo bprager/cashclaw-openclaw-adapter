@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -14,25 +12,33 @@ from cashclaw_adapter.models import TaskRecord, TaskStatus
 
 class FakeCashClawClient:
     def __init__(self) -> None:
-        self.health = UpstreamHealth(healthy=True, detail="ok")
+        self.health = UpstreamHealth(
+            healthy=True,
+            detail="mode=running, running=True, active_tasks=1, agent_id=agent-1",
+        )
         self.created_task = TaskRecord(
             task_id="task-123",
-            status=TaskStatus.PENDING,
+            status=TaskStatus.ACCEPTED,
             title="Build adapter",
-            instructions="Implement the first phase",
-            project_id="proj-1",
-            session_id="sess-1",
-            requested_by="openclaw",
-            metadata={"priority": "high"},
-            upstream_payload={"task_id": "task-123", "status": "pending"},
+            instructions="Build adapter\nImplement the first phase",
+            agent_id="agent-1",
+            client_address="0xabc",
+            requested_by="0xabc",
+            category="development",
+            budget_wei="1000",
+            quoted_price_wei="900",
+            revision_count=0,
+            metadata={},
+            upstream_payload={"id": "task-123", "status": "accepted"},
         )
-        self.fetched_task = self.created_task.model_copy(update={"status": TaskStatus.RUNNING})
+        self.fetched_task = self.created_task.model_copy(update={"status": TaskStatus.SUBMITTED})
+        self.listed_tasks = [self.created_task, self.fetched_task]
 
     def check_health(self) -> UpstreamHealth:
         return self.health
 
-    def create_task(self, _request: Any) -> TaskRecord:
-        return self.created_task
+    def list_tasks(self) -> list[TaskRecord]:
+        return self.listed_tasks
 
     def get_task(self, _task_id: str) -> TaskRecord:
         return self.fetched_task

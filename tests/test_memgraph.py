@@ -28,15 +28,19 @@ class FakeConnection:
 def build_task() -> TaskRecord:
     return TaskRecord(
         task_id="task-1",
-        status=TaskStatus.RUNNING,
+        status=TaskStatus.ACCEPTED,
         title="Build",
         instructions="Implement",
-        project_id="proj-1",
-        session_id="sess-1",
-        requested_by="openclaw",
+        agent_id="agent-1",
+        client_address="0xabc",
+        requested_by="0xabc",
         callback_url="https://example.com/callback",
+        category="development",
+        budget_wei="1000",
+        quoted_price_wei="900",
+        result="Done",
         metadata={"priority": "high"},
-        upstream_payload={"task_id": "task-1"},
+        upstream_payload={"id": "task-1"},
     )
 
 
@@ -65,12 +69,18 @@ def test_upsert_task_emits_expected_parameters() -> None:
     assert "MERGE (task:Task" in query
     assert parameters == {
         "task_id": "task-1",
-        "status": "running",
+        "status": "accepted",
         "title": "Build",
         "instructions": "Implement",
-        "project_id": "proj-1",
-        "session_id": "sess-1",
-        "requested_by": "openclaw",
+        "agent_id": "agent-1",
+        "client_address": "0xabc",
+        "project_id": None,
+        "session_id": None,
+        "requested_by": "0xabc",
         "callback_url": "https://example.com/callback",
+        "category": "development",
+        "budget_wei": "1000",
+        "quoted_price_wei": "900",
+        "result": "Done",
         "metadata": {"priority": "high"},
     }

@@ -9,15 +9,19 @@
 - Built the first adapter scaffold under `src/cashclaw_adapter/`.
 - Added the initial FastAPI endpoints, placeholder CashClaw client, and Memgraph task writes.
 - Added tests, coverage enforcement, Ruff, mypy, and Markdown linting.
+- Replaced the placeholder CashClaw route assumptions with the real dashboard API contract.
+- Added `GET /tasks` and changed `GET /tasks/{task_id}` to filter from the real task list.
+- Made `POST /tasks` explicitly return `501` because CashClaw does not expose upstream task creation.
 
 ### Current state
 - The repo now has a runnable phase-one implementation slice.
-- `make check` passes with 29 tests and 95.11% coverage.
-- The real CashClaw API contract is still unverified and remains the main source of risk.
+- `make check` passes with 36 tests and 95.25% coverage.
+- The verified CashClaw routes currently used are `/api/setup/status`, `/api/status`, and `/api/tasks`.
+- The main product gap is upstream task creation, not test or code quality.
 
 ### Next good move
-- Inspect the real CashClaw API surface and replace the placeholder request and response mapping.
-- Extend tests first as each real route or payload shape is introduced.
+- Decide how OpenClaw should initiate work when CashClaw itself only exposes monitoring routes.
+- Extend Memgraph persistence for richer task lifecycle and event data.
 
 ### Notes for the next session
 - Read `.codex/PROJECT.md` first for the repo reality check.

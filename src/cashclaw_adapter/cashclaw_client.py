@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import requests
 
 from cashclaw_adapter.config import Settings
-from cashclaw_adapter.models import TaskCreateRequest, TaskRecord, TaskStatus
+from cashclaw_adapter.models import TaskFileRecord, TaskMessageRecord, TaskRecord, TaskStatus
 
 
 class CashClawError(Exception):
@@ -41,6 +41,14 @@ class CashClawServerError(CashClawError):
         super().__init__(detail)
 
 
+class CashClawTaskNotFoundError(CashClawError):
+    """Raised when a task cannot be found in the active task list."""
+
+    def __init__(self, task_id: str):
+        self.task_id = task_id
+        super().__init__(f"CashClaw task not found: {task_id}")
+
+
 @dataclass(slots=True)
 class UpstreamHealth:
     """Health result returned by the upstream service."""
@@ -50,7 +58,7 @@ class UpstreamHealth:
 
 
 class CashClawClient:
-    """Small typed wrapper around the placeholder CashClaw HTTP contract."""
+    """Typed wrapper around the verified CashClaw dashboard HTTP contract."""
 
     def __init__(self, settings: Settings, session: requests.Session | None = None):
         self._settings = settings
@@ -59,21 +67,44 @@ class CashClawClient:
     def check_health(self) -> UpstreamHealth:
         """Check upstream health."""
 
-        payload = self._request_json("GET", "/api/health", retryable=True)
-        detail = payload.get("detail")
-        return UpstreamHealth(healthy=True, detail=detail if isinstance(detail, str) else None)
+        setup = self._request_json("GET", "/api/setup/status", retryable=True)
+        configured = bool(setup.get("configured"))
+        mode = self._optional_str(setup.get("mode")) or "unknown"
+        step = self._optional_str(setup.get("step"))
 
-    def create_task(self, request: TaskCreateRequest) -> TaskRecord:
-        """Create a task upstream using the current placeholder contract."""
+        if not configured:
+            detail = (
+                "CashClaw reachable but not configured "
+                f"(mode={mode}, step={step or 'unknown'})"
+            )
+            return UpstreamHealth(healthy=False, detail=detail)
 
-        payload = self._request_json("POST", "/api/tasks", json=request.model_dump(mode="json"))
-        return self._parse_task(payload, fallback=request)
+        payload = self._request_json("GET", "/api/status", retryable=True)
+        running = bool(payload.get("running"))
+        active_tasks = self._optional_int(payload.get("activeTasks")) or 0
+        agent_id = self._optional_str(payload.get("agentId"))
+        detail = (
+            f"mode={mode}, running={running}, active_tasks={active_tasks}, "
+            f"agent_id={agent_id or 'unknown'}"
+        )
+        return UpstreamHealth(healthy=running, detail=detail)
+
+    def list_tasks(self) -> list[TaskRecord]:
+        """List active tasks from CashClaw."""
+
+        payload = self._request_json("GET", "/api/tasks", retryable=True)
+        raw_tasks = payload.get("tasks")
+        if not isinstance(raw_tasks, list):
+            raise CashClawResponseError("CashClaw tasks payload is missing the tasks list")
+        return [self._parse_task(task) for task in raw_tasks]
 
     def get_task(self, task_id: str) -> TaskRecord:
-        """Fetch a task upstream."""
+        """Fetch a task by filtering CashClaw's active task list."""
 
-        payload = self._request_json("GET", f"/api/tasks/{task_id}", retryable=True)
-        return self._parse_task(payload)
+        for task in self.list_tasks():
+            if task.task_id == task_id:
+                return task
+        raise CashClawTaskNotFoundError(task_id)
 
     def _request_json(
         self,
@@ -107,6 +138,8 @@ class CashClawClient:
         if 200 <= status_code < 300:
             return data
 
+        if status_code == 503 and data.get("mode") == "setup":
+            raise CashClawUnavailableError("CashClaw agent is not configured yet")
         detail = self._extract_detail(data) or response.reason or "CashClaw request failed"
         if 400 <= status_code < 500:
             raise CashClawClientError(status_code, detail)
@@ -125,39 +158,52 @@ class CashClawClient:
         return payload
 
     def _extract_detail(self, payload: dict[str, Any]) -> str | None:
-        detail = payload.get("detail")
-        return detail if isinstance(detail, str) else None
+        for key in ("detail", "error"):
+            value = payload.get(key)
+            if isinstance(value, str):
+                return value
+        return None
 
-    def _parse_task(
-        self,
-        payload: dict[str, Any],
-        *,
-        fallback: TaskCreateRequest | None = None,
-    ) -> TaskRecord:
-        task_id = payload.get("task_id")
-        title = payload.get("title") or (fallback.title if fallback else None)
-        instructions = payload.get("instructions") or (fallback.instructions if fallback else None)
-        status_value = payload.get("status", TaskStatus.PENDING.value)
-        if not isinstance(task_id, str) or not isinstance(title, str) or not isinstance(
-            instructions, str
-        ):
+    def _parse_task(self, payload: Any) -> TaskRecord:
+        if not isinstance(payload, dict):
+            raise CashClawResponseError("CashClaw task entry is not a JSON object")
+
+        task_id = payload.get("id")
+        instructions = payload.get("task")
+        status_value = payload.get("status")
+        if not isinstance(task_id, str) or not isinstance(instructions, str):
             raise CashClawResponseError("CashClaw task payload is missing required fields")
+        title = self._derive_title(instructions)
 
         return TaskRecord(
             task_id=task_id,
             status=self._parse_status(status_value),
             title=title,
             instructions=instructions,
-            project_id=self._optional_str(payload.get("project_id"))
-            or (fallback.project_id if fallback else None),
-            session_id=self._optional_str(payload.get("session_id"))
-            or (fallback.session_id if fallback else None),
-            requested_by=self._optional_str(payload.get("requested_by"))
-            or (fallback.requested_by if fallback else None),
-            callback_url=self._optional_str(payload.get("callback_url"))
-            or (str(fallback.callback_url) if fallback and fallback.callback_url else None),
-            metadata=self._coerce_dict(payload.get("metadata"))
-            or (fallback.metadata if fallback else {}),
+            agent_id=self._optional_str(payload.get("agentId")),
+            client_address=self._optional_str(payload.get("clientAddress")),
+            requested_by=self._optional_str(payload.get("clientAddress")),
+            category=self._optional_str(payload.get("category")),
+            budget_wei=self._optional_str(payload.get("budgetWei")),
+            quoted_price_wei=self._optional_str(payload.get("quotedPriceWei")),
+            quoted_message=self._optional_str(payload.get("quotedMessage")),
+            result=self._optional_str(payload.get("result")),
+            tx_hash=self._optional_str(payload.get("txHash")),
+            claimed_at=self._optional_int(payload.get("claimedAt")),
+            quoted_at=self._optional_int(payload.get("quotedAt")),
+            accepted_at=self._optional_int(payload.get("acceptedAt")),
+            submitted_at=self._optional_int(payload.get("submittedAt")),
+            completed_at=self._optional_int(payload.get("completedAt")),
+            disputed_at=self._optional_int(payload.get("disputedAt")),
+            resolved_at=self._optional_int(payload.get("resolvedAt")),
+            rated_at=self._optional_int(payload.get("ratedAt")),
+            rated_score=self._optional_int(payload.get("ratedScore")),
+            rated_comment=self._optional_str(payload.get("ratedComment")),
+            revision_count=self._optional_int(payload.get("revisionCount")),
+            dispute_resolution=self._optional_str(payload.get("disputeResolution")),
+            files=self._parse_files(payload.get("files")),
+            messages=self._parse_messages(payload.get("messages")),
+            metadata={},
             upstream_payload=payload,
         )
 
@@ -172,5 +218,69 @@ class CashClawClient:
     def _optional_str(self, value: Any) -> str | None:
         return value if isinstance(value, str) and value else None
 
-    def _coerce_dict(self, value: Any) -> dict[str, Any]:
-        return value if isinstance(value, dict) else {}
+    def _optional_int(self, value: Any) -> int | None:
+        return value if isinstance(value, int) else None
+
+    def _parse_files(self, value: Any) -> list[TaskFileRecord]:
+        if not isinstance(value, list):
+            return []
+        files: list[TaskFileRecord] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            key = item.get("key")
+            name = item.get("name")
+            size = item.get("size")
+            uploaded_at = item.get("uploadedAt")
+            is_valid_file = (
+                isinstance(key, str)
+                and isinstance(name, str)
+                and isinstance(size, int)
+                and isinstance(uploaded_at, int)
+            )
+            if is_valid_file:
+                file_key = cast(str, key)
+                file_name = cast(str, name)
+                file_size = cast(int, size)
+                file_uploaded_at = cast(int, uploaded_at)
+                files.append(
+                    TaskFileRecord(
+                        key=file_key,
+                        name=file_name,
+                        size=file_size,
+                        uploaded_at=file_uploaded_at,
+                    )
+                )
+        return files
+
+    def _parse_messages(self, value: Any) -> list[TaskMessageRecord]:
+        if not isinstance(value, list):
+            return []
+        messages: list[TaskMessageRecord] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            sender = item.get("sender")
+            role = item.get("role")
+            content = item.get("content")
+            timestamp = item.get("timestamp")
+            if (
+                isinstance(sender, str)
+                and isinstance(role, str)
+                and isinstance(content, str)
+                and isinstance(timestamp, int)
+            ):
+                messages.append(
+                    TaskMessageRecord(
+                        sender=sender,
+                        role=role,
+                        content=content,
+                        timestamp=timestamp,
+                    )
+                )
+        return messages
+
+    def _derive_title(self, instructions: str) -> str:
+        first_line = instructions.strip().splitlines()[0]
+        compact = " ".join(first_line.split())
+        return compact[:80] if compact else "CashClaw task"

@@ -18,6 +18,7 @@ from cashclaw_adapter.cashclaw_client import (
     CashClawError,
     CashClawResponseError,
     CashClawServerError,
+    CashClawTaskNotFoundError,
     CashClawUnavailableError,
 )
 from cashclaw_adapter.config import Settings, get_settings
@@ -27,6 +28,7 @@ from cashclaw_adapter.models import (
     ErrorResponse,
     HealthResponse,
     TaskCreateRequest,
+    TaskListResponse,
     TaskRecord,
 )
 
@@ -150,6 +152,16 @@ def create_app(
             content=ErrorResponse(detail=str(exc)).model_dump(),
         )
 
+    @app.exception_handler(CashClawTaskNotFoundError)
+    async def handle_cashclaw_task_not_found_error(
+        _request: Request,
+        exc: CashClawTaskNotFoundError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=ErrorResponse(detail=str(exc)).model_dump(),
+        )
+
     @app.exception_handler(CashClawResponseError)
     async def handle_cashclaw_response_error(
         _request: Request,
@@ -184,14 +196,25 @@ def create_app(
 
     @app.post("/tasks", response_model=TaskRecord, status_code=status.HTTP_201_CREATED)
     async def create_task(
-        payload: TaskCreateRequest,
+        _payload: TaskCreateRequest,
+    ) -> TaskRecord:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=(
+                "CashClaw's local HTTP API does not support task creation; "
+                "use GET /tasks to monitor inbox tasks."
+            ),
+        )
+
+    @app.get("/tasks", response_model=TaskListResponse)
+    async def list_tasks(
         request: Request,
         cashclaw_client: CashClawClient = Depends(get_cashclaw_client),
         memgraph_store: MemgraphStore = Depends(get_memgraph_store),
-    ) -> TaskRecord:
-        task = cashclaw_client.create_task(payload)
-        _write_task(memgraph_store, task, request.state.request_id, logger)
-        return task
+    ) -> TaskListResponse:
+        tasks = cashclaw_client.list_tasks()
+        _write_tasks(memgraph_store, tasks, request.state.request_id, logger)
+        return TaskListResponse(tasks=tasks)
 
     @app.get("/tasks/{task_id}", response_model=TaskRecord)
     async def get_task(
@@ -261,6 +284,16 @@ def _write_task(
         ) from exc
 
     logger.info("memgraph.write_ok task_id=%s request_id=%s", task.task_id, request_id)
+
+
+def _write_tasks(
+    memgraph_store: MemgraphStore,
+    tasks: list[TaskRecord],
+    request_id: str,
+    logger: logging.Logger,
+) -> None:
+    for task in tasks:
+        _write_task(memgraph_store, task, request_id, logger)
 
 
 app = create_app()

@@ -15,33 +15,37 @@ The intended direction is clear:
 - CashClaw executes as a separate process
 - Memgraph on `odin` stores durable shared graph data
 
-The main remaining gap is that the upstream CashClaw API contract is still a placeholder and has
-not been verified against the real implementation.
+The CashClaw contract has now been verified against the upstream repository for the currently
+available dashboard routes: `/api/setup/status`, `/api/status`, and `/api/tasks`.
+
+The main remaining integration gap is that CashClaw's local API does not expose task creation,
+so adapter `POST /tasks` remains intentionally unimplemented.
 
 ## Completed
 - Created `src/cashclaw_adapter/` with app, config, models, CashClaw client, and Memgraph store.
-- Implemented `GET /health`, `POST /tasks`, and `GET /tasks/{task_id}`.
+- Implemented `GET /health`, `GET /tasks`, and `GET /tasks/{task_id}` against the real CashClaw task-monitoring API.
+- Kept `POST /tasks` explicit with `501 Not Implemented` because upstream task creation is not available.
 - Added startup dependency validation, localhost gating, logging, and upstream error mapping.
 - Added `scripts/bootstrap_memgraph.cypher` and `.env.example`.
 - Added pytest coverage enforcement with a project threshold above 90%.
 - Added Ruff, mypy, and Markdown linting commands.
-- Verified the current phase-one scaffold at 95.11% test coverage.
+- Verified the current scaffold at 95.25% test coverage.
 
 ## In progress
-- CashClaw request and response mapping is still based on the placeholder contract from `handover.md`.
+- Richer persistence for task events, pricing, and workflow metadata is still minimal.
 
 ## Blockers
-- The real CashClaw API routes and payloads have not been verified.
+- CashClaw's local HTTP API does not expose task creation.
 - Memgraph writes are still limited to task upserts for the initial vertical slice.
 - Approval proposal endpoints are not implemented yet.
 
 ## Next milestone
-Replace the placeholder CashClaw contract with the real upstream contract and keep the current
-quality gates green while expanding coverage for new behavior.
+Build on the verified monitoring contract by adding richer task/event persistence and deciding
+how OpenClaw should initiate work when CashClaw itself does not expose a create-task endpoint.
 
 ## Recommended next step
-Inspect the real CashClaw API surface, then update `cashclaw_client.py`, `app.py`, tests, and
-README examples to match the real payloads and status model.
+Design the adapter's task-submission strategy around a real upstream entrypoint rather than the
+old placeholder `POST /api/tasks` assumption, then extend tests before adding new routes.
 
 ## Update template
 When status changes, update these sections:

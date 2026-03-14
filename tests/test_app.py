@@ -7,6 +7,7 @@ from cashclaw_adapter.cashclaw_client import (
     CashClawClientError,
     CashClawResponseError,
     CashClawServerError,
+    CashClawTaskNotFoundError,
     CashClawUnavailableError,
     UpstreamHealth,
 )
@@ -67,10 +68,21 @@ def test_create_task_persists_to_memgraph(
         headers={"x-request-id": "req-123"},
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 501
     assert response.headers["x-request-id"] == "req-123"
-    assert len(fake_memgraph_store.tasks) == 1
-    assert fake_memgraph_store.tasks[0].task_id == "task-123"
+    assert len(fake_memgraph_store.tasks) == 0
+    assert "does not support task creation" in response.json()["detail"]
+
+
+def test_list_tasks_persists_to_memgraph(
+    client: TestClient,
+    fake_memgraph_store,
+) -> None:
+    response = client.get("/tasks")
+
+    assert response.status_code == 200
+    assert len(response.json()["tasks"]) == 2
+    assert len(fake_memgraph_store.tasks) == 2
 
 
 def test_get_task_persists_to_memgraph(
@@ -80,20 +92,20 @@ def test_get_task_persists_to_memgraph(
     response = client.get("/tasks/task-123")
 
     assert response.status_code == 200
-    assert response.json()["status"] == "running"
+    assert response.json()["status"] == "submitted"
     assert len(fake_memgraph_store.tasks) == 1
-    assert fake_memgraph_store.tasks[0].status.value == "running"
+    assert fake_memgraph_store.tasks[0].status.value == "submitted"
 
 
-def test_create_task_returns_502_for_upstream_4xx(
+def test_list_tasks_returns_502_for_upstream_4xx(
     client: TestClient,
     fake_cashclaw_client,
 ) -> None:
-    fake_cashclaw_client.create_task = lambda _request: (_ for _ in ()).throw(
+    fake_cashclaw_client.list_tasks = lambda: (_ for _ in ()).throw(
         CashClawClientError(400, "bad request")
     )
 
-    response = client.post("/tasks", json={"title": "Build", "instructions": "Implement"})
+    response = client.get("/tasks")
 
     assert response.status_code == 502
     assert "CashClaw client error" in response.json()["detail"]
@@ -127,6 +139,20 @@ def test_get_task_returns_503_for_upstream_unavailable(
     assert response.json()["detail"] == "unreachable"
 
 
+def test_get_task_returns_404_when_task_is_missing(
+    client: TestClient,
+    fake_cashclaw_client,
+) -> None:
+    fake_cashclaw_client.get_task = lambda _task_id: (_ for _ in ()).throw(
+        CashClawTaskNotFoundError("task-404")
+    )
+
+    response = client.get("/tasks/task-404")
+
+    assert response.status_code == 404
+    assert "task-404" in response.json()["detail"]
+
+
 def test_get_task_returns_502_for_bad_upstream_payload(
     client: TestClient,
     fake_cashclaw_client,
@@ -141,7 +167,7 @@ def test_get_task_returns_502_for_bad_upstream_payload(
     assert response.json()["detail"] == "bad payload"
 
 
-def test_create_task_returns_503_when_memgraph_write_fails(
+def test_list_tasks_returns_503_when_memgraph_write_fails(
     settings: Settings,
     fake_cashclaw_client,
 ) -> None:
@@ -159,7 +185,7 @@ def test_create_task_returns_503_when_memgraph_write_fails(
     )
     client = TestClient(app)
 
-    response = client.post("/tasks", json={"title": "Build", "instructions": "Implement"})
+    response = client.get("/tasks")
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Memgraph write failed"

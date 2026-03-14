@@ -65,10 +65,16 @@ class MemgraphStore:
         SET task.status = $status,
             task.title = $title,
             task.instructions = $instructions,
+            task.agent_id = $agent_id,
+            task.client_address = $client_address,
             task.project_id = $project_id,
             task.session_id = $session_id,
             task.requested_by = $requested_by,
             task.callback_url = $callback_url,
+            task.category = $category,
+            task.budget_wei = $budget_wei,
+            task.quoted_price_wei = $quoted_price_wei,
+            task.result = $result,
             task.metadata = $metadata
         """
         self._connection.execute(query, parameters=self._task_params(task))
@@ -79,9 +85,15 @@ class MemgraphStore:
             "status": task.status.value,
             "title": task.title,
             "instructions": task.instructions,
+            "agent_id": task.agent_id,
+            "client_address": task.client_address,
             "project_id": task.project_id,
             "session_id": task.session_id,
             "requested_by": task.requested_by,
             "callback_url": task.callback_url,
+            "category": task.category,
+            "budget_wei": task.budget_wei,
+            "quoted_price_wei": task.quoted_price_wei,
+            "result": task.result,
             "metadata": task.metadata,
         }
