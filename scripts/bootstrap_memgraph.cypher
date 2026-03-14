@@ -1,0 +1,1 @@
+CREATE CONSTRAINT ON (task:Task) ASSERT task.task_id IS UNIQUE;

@@ -13,6 +13,17 @@ dependencies = [
   "gqlalchemy==1.6.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<0.29",
+  "mypy>=1.15,<2",
+  "pymarkdownlnt>=0.9.27,<0.10",
+  "pytest>=8.3,<9",
+  "pytest-cov>=6.0,<7",
+  "ruff>=0.11,<0.12",
+  "types-requests>=2.32,<3",
+]
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -22,3 +33,37 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--cov=cashclaw_adapter",
+  "--cov-report=term-missing",
+  "--cov-fail-under=90",
+]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "B",
+  "UP",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/cashclaw_adapter/app.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/cashclaw_adapter"]
+strict = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["gqlalchemy", "gqlalchemy.*"]
+disable_error_code = ["import-untyped"]
