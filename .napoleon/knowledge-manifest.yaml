@@ -1,0 +1,73 @@
+protocol_version: napoleon/yggdrasil-knowledge-protocol/v1
+record_kind: knowledge-manifest
+manifest_version: "1"
+component_id: napoleon.auxiliary.cashclaw-adapter
+display_name: CashClaw adapter public metadata
+owner_id: owner.bernd
+repository_id: repository.cashclaw-openclaw-adapter
+profile: trusted_auxiliary
+gateway_discovery_origin: https://prager.homeip.net/yggdrasil/
+sources:
+  - source_id: cashclaw.intent
+    category: intent
+    location: README.md
+    content_digest: sha256:60534f0fe58a8a9126ba67dc022e4b7ce28eb57bda5d16f011dfe7355e73deae
+  - source_id: cashclaw.implementation
+    category: implementation
+    location: pyproject.toml
+    content_digest: sha256:5a1f44da5eb6e9d9ee24b9caac02d7e46211a57178f3e42db6a94a59c70ba3a6
+  - source_id: cashclaw.contract
+    category: contract
+    location: LICENSE
+    content_digest: sha256:f3b13cc2d0f1d6f7c71744a0de357b87b7db47bc48fb16f5d723cbf7c1541a9f
+  - source_id: cashclaw.test-status
+    category: test
+    location: pyproject.toml
+    content_digest: sha256:5a1f44da5eb6e9d9ee24b9caac02d7e46211a57178f3e42db6a94a59c70ba3a6
+  - source_id: cashclaw.status
+    category: status
+    location: README.md
+    content_digest: sha256:60534f0fe58a8a9126ba67dc022e4b7ce28eb57bda5d16f011dfe7355e73deae
+  - source_id: cashclaw.evidence
+    category: evidence
+    location: LICENSE
+    content_digest: sha256:f3b13cc2d0f1d6f7c71744a0de357b87b7db47bc48fb16f5d723cbf7c1541a9f
+source_precedence:
+  - intent
+  - implementation
+  - contract
+  - test
+  - status
+  - evidence
+expected_freshness_seconds: 86400
+allowed_knowledge_types:
+  - napoleon_current_state
+forbidden_content:
+  - credential
+  - private_key
+  - secret
+  - personal_financial_data
+collection_mode: scheduled
+synchronization_intent: continuous
+signing_key_id: key.auxiliary.cashclaw-adapter
+approved_collector_id: napoleon.auxiliary.cashclaw-adapter
+related_components: []
+external_dependencies: []
+deprecated: false
+supersedes_manifest_digest: null
+incident_contact_id: contact.bernd
+authority:
+  graph_write: false
+  memory_write: false
+  registry_write: false
+  runtime_write: false
+  command_execution: false
+  task_dispatch: false
+  agent_dispatch: false
+  external_send: false
+  service_control: false
+  approval_capture: false
+  protected_artifact_write: false
+  production_replacement: false
+  autonomous_execution: false
+  runtime_authority: false
